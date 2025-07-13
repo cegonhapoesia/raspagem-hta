@@ -1,0 +1,84 @@
+# anjo_total.ps1
+
+# 1. HTML completo embutido
+$html = @"
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Anjo Pardal</title>
+    <style>
+        body {
+            background: linear-gradient(to right, #f7f7f7, #e0eafc);
+            font-family: Arial, sans-serif;
+            text-align: center;
+            padding: 60px;
+            color: #333;
+        }
+        h1 {
+            color: #2c3e50;
+            font-size: 3em;
+        }
+        p {
+            font-size: 1.2em;
+        }
+        .footer {
+            margin-top: 50px;
+            font-size: 0.9em;
+            color: #777;
+        }
+    </style>
+</head>
+<body>
+    <h1>🕊️ Anjo Pardal</h1>
+    <p>Servidor Python real iniciado via PowerShell.</p>
+    <p>Este é um exemplo 100% funcional com HTML real, Python real e execução local.</p>
+    <div class="footer">Feito com 💡 por você.</div>
+</body>
+</html>
+"@
+
+# 2. Grava o HTML no disco
+$html | Out-File -Encoding UTF8 ".\anjo_pardal.html"
+
+# 3. Código Python do servidor
+$server = @"
+import http.server
+import socketserver
+import os
+
+PORT = 8000
+FILE_NAME = "anjo_pardal.html"
+
+class Handler(http.server.SimpleHTTPRequestHandler):
+    def do_GET(self):
+        if self.path == "/":
+            self.path = "/" + FILE_NAME
+        return http.server.SimpleHTTPRequestHandler.do_GET(self)
+
+if __name__ == "__main__":
+    os.chdir(os.path.dirname(os.path.abspath(__file__)))
+    with socketserver.TCPServer(("", PORT), Handler) as httpd:
+        print(f"🚀 Servidor ativo: http://localhost:{PORT}")
+        httpd.serve_forever()
+"@
+
+# 4. Grava o servidor Python
+$server | Out-File -Encoding UTF8 ".\server.py"
+
+# 5. Inicia o servidor Python
+Start-Process -NoNewWindow -FilePath "python" -ArgumentList "server.py"
+
+# 6. Aguarda o servidor iniciar
+Start-Sleep -Seconds 2
+
+# 7. Abre o navegador
+Start-Process "http://localhost:8000"
+
+# 8. Mantém o PowerShell vivo
+Write-Host "✅ Servidor 'Anjo Pardal' rodando em http://localhost:8000"
+Write-Host "⏳ Pressione CTRL+C para encerrar."
+while ($true) {
+    Start-Sleep -Seconds 60
+}
+httpd.serve_forever()

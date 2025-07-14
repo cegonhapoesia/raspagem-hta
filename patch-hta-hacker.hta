@@ -1,0 +1,158 @@
+<html>
+<head>
+<title>Advanced HTA Pentest Crawler</title>
+<HTA:APPLICATION
+  ID="oHTA"
+  APPLICATIONNAME="AdvancedCrawler"
+  BORDER="thin"
+  CAPTION="yes"
+  SHOWINTASKBAR="yes"
+  SINGLEINSTANCE="yes"
+  SYSMENU="yes"
+/>
+<script language="VBScript">
+Dim visitedLinks, maxDepth, baseDomain
+
+Sub Window_OnLoad()
+  Set visitedLinks = CreateObject("Scripting.Dictionary")
+  maxDepth = 2 ' Limite de profundidade para evitar loops infinitos
+  Document.All.txtURL.Value = "http://example.com"
+  Document.All.txtDepth.Value = maxDepth
+End Sub
+
+Sub btnStart_OnClick()
+  Dim startURL
+  startURL = Document.All.txtURL.Value
+  maxDepth = CInt(Document.All.txtDepth.Value)
+  baseDomain = GetDomain(startURL)
+  Document.All.txtLog.Value = ""
+  visitedLinks.RemoveAll
+  Crawl startURL, 0
+  MsgBox "Crawling finished. Total unique links: " & visitedLinks.Count
+End Sub
+
+Sub Crawl(url, depth)
+  If depth > maxDepth Then Exit Sub
+  If visitedLinks.Exists(url) Then Exit Sub
+  visitedLinks.Add url, True
+  Log "Crawling: " & url & " Depth: " & depth
+
+  Dim http, html, links, i
+  Set http = CreateObject("MSXML2.XMLHTTP")
+  On Error Resume Next
+  http.Open "GET", url, False
+  http.Send
+  If Err.Number <> 0 Or http.Status <> 200 Then
+    Log "Failed to fetch: " & url & " Status: " & http.Status
+    Exit Sub
+  End If
+  On Error GoTo 0
+
+  html = http.responseText
+  SaveContent url, html
+  Set links = ExtractLinks(html)
+
+  For i = 0 To links.Count - 1
+    Dim link
+    link = NormalizeURL(links.Item(i), url)
+    If link <> "" And InStr(link, baseDomain) > 0 Then
+      ' Check for suspicious parameters (basic)
+      If HasSuspiciousParams(link) Then
+        Log "Suspicious link found: " & link
+      End If
+      Crawl link, depth + 1
+    End If
+  Next
+End Sub
+
+Function ExtractLinks(html)
+  Dim re, matches, i, coll
+  Set coll = CreateObject("System.Collections.ArrayList")
+  Set re = New RegExp
+  re.Pattern = "href\s*=\s*[""']([^""'#>]+)[""']"
+  re.IgnoreCase = True
+  re.Global = True
+  Set matches = re.Execute(html)
+  For i = 0 To matches.Count - 1
+    coll.Add matches.Item(i).SubMatches(0)
+  Next
+  Set ExtractLinks = coll
+End Function
+
+Function NormalizeURL(link, baseURL)
+  If Left(link, 4) = "http" Then
+    NormalizeURL = link
+  ElseIf Left(link, 1) = "/" Then
+    Dim domain
+    domain = GetDomain(baseURL)
+    NormalizeURL = domain & link
+  Else
+    ' Relative path
+    Dim basePath
+    basePath = Left(baseURL, InStrRev(baseURL, "/"))
+    NormalizeURL = basePath & link
+  End If
+End Function
+
+Function GetDomain(url)
+  Dim re, matches
+  Set re = New RegExp
+  re.Pattern = "^(https?://[^/]+)"
+  re.IgnoreCase = True
+  Set matches = re.Execute(url)
+  If matches.Count > 0 Then
+    GetDomain = matches.Item(0).SubMatches(0)
+  Else
+    GetDomain = ""
+  End If
+End Function
+
+Function HasSuspiciousParams(url)
+  Dim suspiciousPatterns
+  suspiciousPatterns = Array("'", """", "union", "select", "<script", "alert(", "onerror", "onload")
+  Dim i
+  For i = 0 To UBound(suspiciousPatterns)
+    If InStr(LCase(url), suspiciousPatterns(i)) > 0 Then
+      HasSuspiciousParams = True
+      Exit Function
+    End If
+  Next
+  HasSuspiciousParams = False
+End Function
+
+Sub SaveContent(url, content)
+  Dim fso, filePath, fileName
+  Set fso = CreateObject("Scripting.FileSystemObject")
+  fileName = Replace(url, "http://", "")
+  fileName = Replace(fileName, "https://", "")
+  fileName = Replace(fileName, "/", "_")
+  fileName = Replace(fileName, "?", "_")
+  fileName = Replace(fileName, "&", "_")
+  fileName = Replace(fileName, "=", "_")
+  filePath = fso.GetSpecialFolder(2) & "\" & fileName & ".html" ' 2 = TemporaryFolder
+  On Error Resume Next
+  Dim file
+  Set file = fso.CreateTextFile(filePath, True)
+  file.Write content
+  file.Close
+  On Error GoTo 0
+  Log "Saved content to: " & filePath
+End Sub
+
+Sub Log(msg)
+  Document.All.txtLog.Value = Document.All.txtLog.Value & msg & vbCrLf
+  Document.All.txtLog.ScrollTop = Document.All.txtLog.ScrollHeight
+End Sub
+</script>
+<style>
+  textarea { font-family: Consolas, monospace; }
+</style>
+</head>
+<body>
+<h3>Advanced HTA Pentest Crawler</h3>
+URL inicial: <input type="text" id="txtURL" size="50"><br>
+Profundidade máxima: <input type="text" id="txtDepth" size="3"><br><br>
+<button id="btnStart">Iniciar Crawl</button><br><br>
+<textarea id="txtLog" rows="20" cols="80" readonly></textarea>
+</body>
+</html>

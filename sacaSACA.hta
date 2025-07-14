@@ -1,0 +1,186 @@
+<html>
+<head>
+<title>HTA Raspagem e Download Documentos</title>
+<HTA:APPLICATION
+  ID="htaApp"
+  APPLICATIONNAME="RasparDocsDownload"
+  BORDER="thin"
+  CAPTION="yes"
+  SHOWINTASKBAR="yes"
+  SINGLEINSTANCE="yes"
+  SYSMENU="yes"
+  WINDOWSTATE="normal"
+/>
+<script language="VBScript">
+Sub btnScrapeAllDocs_onclick()
+    Dim parentUrl, http, html, links, i, linkHref, baseUrl
+    Dim docExts, output, docCount
+
+    parentUrl = document.getElementById("txtParentUrl").value
+    If parentUrl = "" Then
+        MsgBox "Informe a URL do link pai."
+        Exit Sub
+    End If
+
+    Set http = CreateObject("WinHttp.WinHttpRequest.5.1")
+    On Error Resume Next
+    http.Open "GET", parentUrl, False
+    http.Send
+    If Err.Number <> 0 Or http.Status <> 200 Then
+        MsgBox "Erro ao acessar a URL do link pai."
+        Exit Sub
+    End If
+    On Error GoTo 0
+
+    html = http.ResponseText
+
+    ' Criar objeto HTML para parsear
+    Dim htmlDoc
+    Set htmlDoc = CreateObject("htmlfile")
+    htmlDoc.Open
+    htmlDoc.Write html
+    htmlDoc.Close
+
+    Set links = htmlDoc.getElementsByTagName("a")
+
+    ' Extensões de documentos para filtrar
+    docExts = Array(".pdf", ".doc", ".docx", ".xls", ".xlsx", ".html", ".htm", ".txt")
+
+    output = "Documentos encontrados e baixados:" & vbCrLf
+    docCount = 0
+
+    Dim fso, userDocsFolder
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    userDocsFolder = CreateObject("WScript.Shell").SpecialFolders("MyDocuments")
+    If Right(userDocsFolder,1) <> "\" Then userDocsFolder = userDocsFolder & "\"
+
+    For i = 0 To links.length - 1
+        linkHref = links(i).href
+        If linkHref <> "" Then
+            linkHref = NormalizeUrl(linkHref, GetBaseUrl(parentUrl))
+            If HasDocExtension(linkHref, docExts) Then
+                docCount = docCount + 1
+                output = output & docCount & ". " & linkHref & " - "
+                ' Baixar documento
+                Dim docHttp, contentLength, fileName, filePath
+                Set docHttp = CreateObject("WinHttp.WinHttpRequest.5.1")
+                On Error Resume Next
+                docHttp.Open "GET", linkHref, False
+                docHttp.Send
+                If Err.Number = 0 And docHttp.Status = 200 Then
+                    contentLength = LenB(docHttp.ResponseBody)
+                    ' Extrair nome do arquivo da URL
+                    fileName = ExtractFileName(linkHref)
+                    filePath = userDocsFolder & fileName
+                    ' Salvar arquivo
+                    SaveBinaryFile filePath, docHttp.ResponseBody
+                    output = output & "Baixado (" & contentLength & " bytes) em " & filePath & vbCrLf
+                Else
+                    output = output & "Falha ao baixar" & vbCrLf
+                End If
+                On Error GoTo 0
+            End If
+        End If
+    Next
+
+    If docCount = 0 Then
+        output = "Nenhum documento encontrado com as extensões especificadas."
+    End If
+
+    document.getElementById("txtOutput").value = output
+End Sub
+
+Function HasDocExtension(url, exts)
+    Dim ext, i, lowerUrl
+    lowerUrl = LCase(url)
+    For i = 0 To UBound(exts)
+        ext = exts(i)
+        If Right(lowerUrl, Len(ext)) = ext Then
+            HasDocExtension = True
+            Exit Function
+        End If
+    Next
+    HasDocExtension = False
+End Function
+
+Function GetBaseUrl(fullUrl)
+    Dim pos, base
+    pos = InStrRev(fullUrl, "/")
+    If pos > 7 Then ' para evitar cortar "http://"
+        base = Left(fullUrl, pos)
+    Else
+        base = fullUrl & "/"
+    End If
+    GetBaseUrl = base
+End Function
+
+Function NormalizeUrl(url, baseUrl)
+    If Left(url, 4) = "http" Then
+        NormalizeUrl = url
+    ElseIf Left(url, 2) = "//" Then
+        ' Protocolo relativo
+        NormalizeUrl = "http:" & url
+    ElseIf Left(url, 1) = "/" Then
+        ' Caminho absoluto no domínio
+        Dim domain
+        domain = GetDomain(baseUrl)
+        NormalizeUrl = domain & url
+    Else
+        ' Caminho relativo
+        NormalizeUrl = baseUrl & url
+    End If
+End Function
+
+Function GetDomain(url)
+    Dim protocolEnd, domainEnd
+    protocolEnd = InStr(url, "://")
+    If protocolEnd > 0 Then
+        domainEnd = InStr(protocolEnd + 3, url, "/")
+        If domainEnd > 0 Then
+            GetDomain = Left(url, domainEnd - 1)
+        Else
+            GetDomain = url
+        End If
+    Else
+        GetDomain = url
+    End If
+End Function
+
+Function ExtractFileName(url)
+    Dim pos
+    pos = InStrRev(url, "/")
+    If pos > 0 Then
+        ExtractFileName = Mid(url, pos + 1)
+    Else
+        ExtractFileName = "arquivo_desconhecido"
+    End If
+    ' Remover parâmetros GET se existirem
+    pos = InStr(ExtractFileName, "?")
+    If pos > 0 Then
+        ExtractFileName = Left(ExtractFileName, pos - 1)
+    End If
+    ' Se nome vazio, colocar padrão
+    If ExtractFileName = "" Then ExtractFileName = "arquivo_desconhecido"
+End Function
+
+Sub SaveBinaryFile(filePath, binaryData)
+    Dim stream
+    Set stream = CreateObject("ADODB.Stream")
+    stream.Type = 1 ' adTypeBinary
+    stream.Open
+    stream.Write binaryData
+    stream.SaveToFile filePath, 2 ' adSaveCreateOverWrite
+    stream.Close
+End Sub
+</script>
+</head>
+<body>
+<h3>Raspar e Baixar Documentos na Pasta Documentos</h3>
+URL do Link Pai: <input type="text" id="txtParentUrl" size="80" placeholder="https://exemplo.com/pagina.html"/><br/><br/>
+<button onclick="btnScrapeAllDocs_onclick">Raspar e Baixar Documentos</button><br/><br/>
+<textarea id="txtOutput" rows="25" cols="100" style="width:98%;"></textarea>
+</body>
+</html>
+
+
+
